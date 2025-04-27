@@ -1,5 +1,13 @@
 /*
- * hippos.ino v1.0.02
+ * hippos.ino v1.0.03
+ *
+ * Edit History
+ *
+
+ * v1.0.04 - moving to Arduino Nano 33 IoT for the power pin.
+ * v1.0.03 - moving to ESP32-S3 (different servo library. Leverage builtin TFT)
+ * v1.0.02 - Added servo tuning feature, tied to serial port.
+ * v1.0.01 - initial creation
  *
  * Hungry Hungry Hippos – Adaptive Game Controller
  * Developed by Fox Devices, LLC
@@ -52,20 +60,24 @@
 #include <Servo.h>
 
 const int BUILTIN_LED = 13;  // Built-in LED
+const unsigned long BLINK_INTERVAL = 2000;  // Total cycle time (2 seconds)
+const unsigned long ON_DURATION = 100;     // LED on for 1 second
+unsigned long previousBlink = 0;
+bool ledOn = false;
 const int NUM_HIPPOS = 4;
 
 /******************************/
 /*  Neopixel LED declarations */
 /******************************/
 
-#define NEOPIXEL_PIN 11       // Choose any free digital pin
+#define NEOPIXEL_PIN A0      // Choose just about any free  pin
 #define NUM_PIXELS   8        // Full strip length, even if you're only using 4
 Adafruit_NeoPixel pixels(NUM_PIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);  //neopixel object that maintains state
 uint32_t hippoColors[4] = {
-  pixels.Color(255, 100, 0),   // for when ORANGE_HIPPO switch is activated
-  pixels.Color(0, 255, 0),     // for when GREEN_HIPPO  switch is activated
-  pixels.Color(255, 255, 0),   // for when YELLOW_HIPPO switch is activated
-  pixels.Color(0, 0, 255)     // for when BLUE_HIPPO   switch is activated
+  pixels.Color(125, 50, 0),   // for when ORANGE_HIPPO switch is activated
+  pixels.Color(0, 125, 0),     // for when GREEN_HIPPO  switch is activated
+  pixels.Color(125, 125, 0),   // for when YELLOW_HIPPO switch is activated
+  pixels.Color(0, 0, 125)     // for when BLUE_HIPPO   switch is activated
 };
 #define MODE_1_COLOR   pixels.Color(0, 0, 30)
 #define MODE_2_COLOR   pixels.Color(0, 30, 0)
@@ -77,7 +89,8 @@ uint32_t hippoColors[4] = {
 /*  Adaptive switch related declarations */
 /*****************************************/
 
-const int adaptiveSwitchPins[NUM_HIPPOS] = {25, 0, 12, 4};   // Adaptive switch input pins (see breadboard)
+const int adaptiveSwitchPins[NUM_HIPPOS] = {A4, A5, A6, A7}; // Adaptive switch input pins (see breadboard)
+
 const unsigned long DEBOUNCE_TIME = 50;     // in millisseconds. Shouldn't need to change. Makes sure button press is only seen once.
 const unsigned long DOUBLE_TAP_WINDOW = 500; // in millisseconds, to detect and avoid accidental double-activation
 bool buttonState[NUM_HIPPOS] = {false}; // Debounce tracking for each switch
@@ -91,7 +104,7 @@ int tapCount[NUM_HIPPOS] = {0};
 /*  Servo related declarations */
 /*******************************/
 
-const int servoPins[NUM_HIPPOS]  = {5, 6, 9, 10};    // Servo output pins (see breadboard)
+const int servoPins[NUM_HIPPOS] = {6, 9, 10, 11};    // Servo output pins for Arduino Nano 33 IoT (see breadboard)
 Servo hippoServos[NUM_HIPPOS]; // Servo objects, each one controls a hippo via a physical pin listed in servoPins[]
 
 // ⚙️ NOTE: This implementation uses a single open/close value (below) for all 4 servos.
@@ -121,13 +134,15 @@ void setOpenPosition(int pos);
 void setClosePosition(int pos);
 void setLEDs(int LEDnum, boolean new_state);
 void toggleMode();
+void waitForSerial(unsigned long timeout_ms = 3000);
 
 void setup() {
   Serial.begin(9600);                     // start the serial port object so we can read and write to it
-  while (!Serial) delay(10);  // Optional: wait for serial port to connect (only needed on some boards)
+  waitForSerial(3000);  // Wait up to 3000ms (3 seconds) for Serial connection, then move on
   Serial.println("🐗 Hungry Hippos Controller Ready");
   Serial.println("Default Mode: MODE 1 (Fixed Duration)");
   pinMode(BUILTIN_LED, OUTPUT);
+  digitalWrite(BUILTIN_LED, LOW);  // Start with LED off
   pixels.begin();       // Initialize NeoPixel LED strip
   pixels.clear();       // Make sure all pixels are off
   pixels.show();        // Push that update to the strip
@@ -142,6 +157,34 @@ void setup() {
 }
 
 void loop() {
+unsigned long currentTime = millis();
+bool anyServoOpen = false;
+
+// need to know if any buttons are being pressed, so the blining heartbeat doesn't exteinguish the builtin LED.
+for (int i = 0; i < NUM_HIPPOS; i++) {
+  if (servoIsOpen[i]) {
+    anyServoOpen = true;
+    break;  // Exit early if any servo is open
+  }
+}
+
+  if (!ledOn && (currentTime - previousBlink >= BLINK_INTERVAL)) {
+    digitalWrite(BUILTIN_LED, HIGH);
+    previousBlink = currentTime;
+    ledOn = true;
+  }
+
+// only extinguish the builtin LED on the heartbeat timer if also no servo is being held open.
+if (anyServoOpen) {
+  digitalWrite(BUILTIN_LED, HIGH);  // Keep LED on if any servo is open
+  } else {
+    if (ledOn && (currentTime - previousBlink >= ON_DURATION)) {
+      digitalWrite(BUILTIN_LED, LOW);
+      Serial.println("in new code setting BUILTIN_LEF to OFF");
+      ledOn = false;
+    }
+  }
+  
   if (Serial.available() >= 3) {  // Wait for full 3-character command (like "C75") on serial port
       processSerial();
     }
@@ -228,6 +271,7 @@ unsigned long now = millis();
             Serial.println(String(i) + " PRESSED → OPEN in MODE_HOLD_TO_OPEN, open = " + String(SERVO_OPEN_POS));
             setLEDs(i, true);
             hippoServos[i].write(SERVO_OPEN_POS);
+            servoIsOpen[i] = true;
           }
         }
 
@@ -235,6 +279,7 @@ unsigned long now = millis();
           if (mode == MODE_HOLD_TO_OPEN) {
             Serial.println(String(i) + " RELEASED → CLOSE in MODE_HOLD_TO_OPEN, closed = " + String(SERVO_CLOSED_POS));
             hippoServos[i].write(SERVO_CLOSED_POS);
+            servoIsOpen[i] = false;
             setLEDs(i, false);
           }
         }
@@ -301,5 +346,12 @@ void toggleMode() { // toggle servos between  staying open a preset lenght of ti
     Serial.println("🔄 Switched to MODE 1: Timed Press");
   }
   pixels.show();    // Push new LED color to LED strip
+}
+
+void waitForSerial(unsigned long timeout_ms) {
+  unsigned long start = millis();
+  while (!Serial && (millis() - start < timeout_ms)) {
+    delay(10);
+  }
 }
 

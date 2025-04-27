@@ -7,7 +7,7 @@ Make the classic game playable using adaptive switches, an Arduino-compatible mi
 ## 📦 What's Included
 
 - `code/` – Arduino sketch (`hippos.ino`)
-- `doc/` – Build documentation (PDF/PostScript format)
+- `docs/` – Build documentation (PDF/PostScript format)
 - `images/` – Photos, wiring diagrams, illustrations
 - `stls/` – 3D printable part files (.STL)
 
@@ -37,11 +37,10 @@ See the `LICENSE` section below for usage info.
 
 ## 💡 Getting Started
 
-1. [ ] Program your microcontroller (see `code/hippos.ino`)
-2. [ ] Breadboard & test the circuit (see `images/`)
-3. [ ] Print or fabricate the mechanical parts (`stls/`)
-4. [ ] Follow the assembly instructions in `doc/`
-
+1. [ ] Start with the assembly instructions in 'hungry hippos - build guide.pdf' found in `doc/`
+2. [ ] The build guide has links to everything else that's needed.
+3. [ ] The build guide also provides a parts list with links
+4. [ ] Some parts require 3D printing. The STL files for those are provided.
 ---
 
 ## 🧾 License
