@@ -37,7 +37,7 @@ See the `LICENSE` section below for usage info.
 
 ## 💡 Getting Started
 
-1. [ ] Start with the assembly instructions in 'hungry hippos - build guide.pdf' found in `doc/`
+1. [ ] Start with the assembly instructions in 'hungry hippos - build guide.pdf' found in `docs/`
 2. [ ] The build guide has links to everything else that's needed.
 3. [ ] The build guide also provides a parts list with links
 4. [ ] Some parts require 3D printing. The STL files for those are provided.
